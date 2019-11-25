@@ -11,6 +11,9 @@ Reference: https://www.sbprojects.net/knowledge/ir/nec.php
 ![shematic of send ir with pwm](https://github.com/minhhieuec/Send_IR_Using_PWM_N76E003/blob/master/N76E003_BSP_Keil_C51_V1.0.6/shematic.PNG)
 
 Using P0.3 of N76E003 as PWM5 mode.
+
+NPN: C1815.
+
 ### Config PWM5
 ```c
   PWM5_P03_OUTPUT_ENABLE;
