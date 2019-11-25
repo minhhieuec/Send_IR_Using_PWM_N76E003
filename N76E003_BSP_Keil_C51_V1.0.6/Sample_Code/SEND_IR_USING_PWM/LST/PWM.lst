@@ -1,0 +1,363 @@
+C51 COMPILER V9.60.0.0   PWM                                                               11/25/2019 11:23:24 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE PWM
+OBJECT MODULE PLACED IN .\Output\PWM.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE Code\PWM.c OPTIMIZE(7,SPEED) BROWSE INCDIR(..\..\Include) DEFINE(FOSC_16
+                    -0000) DEBUG OBJECTEXTEND PRINT(.\LST\PWM.lst) TABS(2) OBJECT(.\Output\PWM.obj)
+
+line level    source
+
+   1          #include "N76E003.h"
+   2          #include "Common.h"
+   3          #include "Delay.h"
+   4          #include "SFR_Macro.h"
+   5          #include "Function_define.h"
+   6          
+   7          #define TRUE 1
+   8          #define FALSE 0
+   9          
+  10          #define delay_ms Timer0_Delay1ms
+  11          #define delay_100us Timer0_Delay100us
+  12          #define delay_10us Timer3_Delay10us
+  13          
+  14          #define EN_PWM_INTERRUPT
+  15          
+  16          #define IR_PIN P03
+  17          #define Enable_IR_Pin() (IR_PIN = 1)
+  18          #define Disable_IR_Pin() (IR_PIN = 0)
+  19          
+  20          #define MAX_BYTES_IR_SEND 8
+  21          #define TIME_9MS 345    //  26.1 * 345 = 9ms
+  22          #define TIME_4_5MS 173  //  26.1 * 173 = 4.5ms
+  23          #define TIME_2_2_MS 86  //  26.1 * 86 = 2.2ms
+  24          #define TIME_1_1MS 43   //  26.1 * 43 = 1.12ms
+  25          #define TIME_560US 21   //  26.1 * 21 = 560us
+  26          #define TIME_END_FRAME 3000
+  27          
+  28          typedef enum {
+  29            START_9MS = 0,
+  30            AGC_BURST_4500US,
+  31            SEND_IR_ADDR_DATA,
+  32            SEND_STOP,
+  33          } Ir_Protocol_t;
+  34          
+  35          uint8_t currentDataBit = 1;
+  36          uint8_t bisRaise = 1;
+  37          uint8_t i, j, tmp;
+  38          uint8_t is_ir_off = 0;
+  39          
+  40          uint8_t ir_data[8] = {0xAA, 0x0A, 0x48, 0xD0, 0x30, 0x22, 0x59, 0x71};// 674 Mhz 
+  41          
+  42          uint8_t ir_pin_stt = 0;
+  43          uint8_t cnt_bit_shift = 0;
+  44          uint8_t is_send_bit_finish = FALSE;
+  45          
+  46          uint8_t tmp = 0, cur_pos = 0;
+  47          
+  48          uint8_t ir_pro_step = START_9MS;
+  49          // uint8_t ir_pro_step = SEND_IR_ADDR_DATA;
+  50          
+  51          uint32_t cnt_time_us = 0;
+  52          
+  53          void enable_ir_pin(uint8_t is_enable) {
+  54   1        if (is_enable) {
+C51 COMPILER V9.60.0.0   PWM                                                               11/25/2019 11:23:24 PAGE 2   
+
+  55   2          if (is_ir_off == 1) {
+  56   3            Enable_IR_Pin();
+  57   3            PWM5_P03_OUTPUT_ENABLE;
+  58   3            is_ir_off = 0;
+  59   3          }
+  60   2        } else {
+  61   2          is_ir_off = 1;
+  62   2          PWM5_P03_OUTPUT_DISABLE;
+  63   2          Disable_IR_Pin();
+  64   2        }
+  65   1      }
+  66          
+  67          /*
+  68           * @brief: turn on pwm out if turn off pwm before
+  69           */
+  70          void enable_ir_pwm_out() {
+  71   1        if (is_ir_off) {
+  72   2          PWM5_P03_OUTPUT_ENABLE;
+  73   2          is_ir_off = 0;
+  74   2        }
+  75   1      }
+  76          
+  77          /*
+  78           * @brief: turn off pwm if pwm out is enable before
+  79           */
+  80          void disable_ir_pwm_out() {
+  81   1        if (is_ir_off == 0) {
+  82   2          PWM5_P03_OUTPUT_DISABLE;
+  83   2          is_ir_off = 1;
+  84   2        }
+  85   1      }
+  86          
+  87          #ifdef EN_PWM_INTERRUPT
+  88          void PWM_ISR(void) interrupt 13 {
+  89   1        clr_PWMF;  // clear PWM interrupt flag
+  90   1      
+  91   1      #if 1
+  92   1        cnt_time_us += 1;  //  26us = 1/38000
+  93   1      
+  94   1        switch (ir_pro_step) {
+  95   2          case START_9MS:
+  96   2            enable_ir_pwm_out();
+  97   2      
+  98   2            if (cnt_time_us >= TIME_9MS) {
+  99   3              ir_pro_step = AGC_BURST_4500US;
+ 100   3              cnt_time_us = 0;
+ 101   3            }
+ 102   2            break;
+ 103   2      
+ 104   2          case AGC_BURST_4500US:
+ 105   2            disable_ir_pwm_out();
+ 106   2      
+ 107   2            if (cnt_time_us >= TIME_4_5MS) {
+ 108   3              cnt_time_us = 0;
+ 109   3              ir_pro_step = SEND_IR_ADDR_DATA;
+ 110   3              // enable to test send start 9ms + wait 4.5ms
+ 111   3              // ir_pro_step = START_9MS;
+ 112   3            }
+ 113   2            break;
+ 114   2      
+ 115   2          case SEND_IR_ADDR_DATA:
+ 116   2            if (cnt_bit_shift == 0) {
+C51 COMPILER V9.60.0.0   PWM                                                               11/25/2019 11:23:24 PAGE 3   
+
+ 117   3              tmp = ir_data[cur_pos];
+ 118   3              // tmp = ir_data[0];
+ 119   3            }
+ 120   2      
+ 121   2            if (tmp & 0x80) {
+ 122   3              if (cnt_time_us < TIME_560US) {
+ 123   4                enable_ir_pwm_out();
+ 124   4              } else {
+ 125   4                if (cnt_time_us > TIME_2_2_MS) {
+ 126   5                  is_send_bit_finish = TRUE;
+ 127   5                } else {
+ 128   5                  disable_ir_pwm_out();
+ 129   5                }
+ 130   4              }
+ 131   3            } else {
+ 132   3              if (cnt_time_us < TIME_560US) {
+ 133   4                enable_ir_pwm_out();
+ 134   4              } else {
+ 135   4                if (cnt_time_us > TIME_1_1MS) {
+ 136   5                  is_send_bit_finish = TRUE;
+ 137   5                } else {
+ 138   5                  disable_ir_pwm_out();
+ 139   5                }
+ 140   4              }
+ 141   3            }
+ 142   2      
+ 143   2            if (is_send_bit_finish) {
+ 144   3              is_send_bit_finish = FALSE;
+ 145   3      
+ 146   3              tmp = tmp << 1;
+ 147   3              cnt_bit_shift += 1;
+ 148   3      
+ 149   3              if (cnt_bit_shift == 8) {
+ 150   4                cnt_bit_shift = 0;
+ 151   4      
+ 152   4                cur_pos += 1;  //  for next byte data
+ 153   4      
+ 154   4                //  send all 4 byte data
+ 155   4                if (cur_pos >= MAX_BYTES_IR_SEND) {
+ 156   5                  cur_pos = 0;
+ 157   5                  ir_pro_step = SEND_STOP;
+ 158   5                  // ir_pro_step = SEND_IR_ADDR_DATA;
+ 159   5                }
+ 160   4              }
+ 161   3      
+ 162   3              cnt_time_us = 0;
+ 163   3            }
+ 164   2            break;
+ 165   2      
+ 166   2          case SEND_STOP:
+ 167   2            if (cnt_time_us < TIME_560US) {
+ 168   3              enable_ir_pwm_out();
+ 169   3            } else {
+ 170   3              if (cnt_time_us < TIME_END_FRAME)  //  76
+ 171   3                disable_ir_pwm_out();
+ 172   3              else {
+ 173   4                cnt_time_us = 0;
+ 174   4                ir_pro_step = START_9MS;
+ 175   4              }
+ 176   3            }
+ 177   2            break;
+ 178   2      
+C51 COMPILER V9.60.0.0   PWM                                                               11/25/2019 11:23:24 PAGE 4   
+
+ 179   2          default:
+ 180   2            break;
+ 181   2        }
+ 182   1      #else
+                cnt_time_us += 26;  //  26us = 1/38000
+              
+                switch (ir_pro_step) {
+                  case START_9MS:
+                    enable_ir_pwm_out();
+              
+                    if (cnt_time_us >= 9000) {
+                      ir_pro_step = AGC_BURST_4500US;
+                      cnt_time_us = 0;
+                    }
+                    break;
+              
+                  case AGC_BURST_4500US:
+                    disable_ir_pwm_out();
+              
+                    if (cnt_time_us > 4500) {
+                      cnt_time_us = 0;
+                      ir_pro_step = SEND_IR_ADDR_DATA;
+                      // enable to test send start 9ms + wait 4.5ms
+                      // ir_pro_step = START_9MS;
+                    }
+                    break;
+              
+                  case SEND_IR_ADDR_DATA:
+                    if (cnt_bit_shift == 0) {
+                      tmp = ir_data[cur_pos];
+                      // tmp = ir_data[0];
+                    }
+              
+                    if (tmp & 0x80) {
+                      if (cnt_time_us < 560) {
+                        enable_ir_pwm_out();
+                      } else {
+                        if (cnt_time_us > 2250) {
+                          is_send_bit_finish = TRUE;
+                        } else {
+                          disable_ir_pwm_out();
+                        }
+                      }
+                    } else {
+                      if (cnt_time_us < 560) {
+                        enable_ir_pwm_out();
+                      } else {
+                        if (cnt_time_us > 1120) {
+                          is_send_bit_finish = TRUE;
+                        } else {
+                          disable_ir_pwm_out();
+                        }
+                      }
+                    }
+              
+                    if (is_send_bit_finish) {
+                      is_send_bit_finish = FALSE;
+              
+                      tmp = tmp << 1;
+                      cnt_bit_shift += 1;
+              
+                      if (cnt_bit_shift == 8) {
+C51 COMPILER V9.60.0.0   PWM                                                               11/25/2019 11:23:24 PAGE 5   
+
+                        cnt_bit_shift = 0;
+              
+                        cur_pos += 1;  //  for next byte data
+              
+                        //  send all 4 byte data
+                        if (cur_pos > 3) {
+                          cur_pos = 0;
+                          ir_pro_step = SEND_STOP;
+                          // ir_pro_step = SEND_IR_ADDR_DATA;
+                        }
+                      }
+              
+                      cnt_time_us = 0;
+                    }
+                    break;
+              
+                  case SEND_STOP:
+                    if (cnt_time_us < 560) {
+                      enable_ir_pwm_out();
+                    } else {
+                      if (cnt_time_us < 2000)
+                        disable_ir_pwm_out();
+                      else {
+                        cnt_time_us = 0;
+                        ir_pro_step = START_9MS;
+                      }
+                    }
+                    break;
+              
+                  default:
+                    break;
+                }
+              #endif
+ 274   1      }
+ 275          #endif
+ 276          
+ 277          void delay_us(uint16_t x) {
+ 278   1        while (x--) {
+ 279   2          _nop_();  //  200us
+ 280   2          _nop_();
+ 281   2          _nop_();
+ 282   2          _nop_();
+ 283   2          _nop_();
+ 284   2          _nop_();
+ 285   2          _nop_();
+ 286   2          _nop_();
+ 287   2          _nop_();
+ 288   2        }
+ 289   1      }
+ 290          
+ 291          /*********************************************************************************************************
+             -***
+ 292           *    Main function
+ 293           *********************************************************************************************************
+             -***/
+ 294          void main(void) {
+ 295   1        Set_All_GPIO_Quasi_Mode;
+ 296   1      
+ 297   1        Disable_IR_Pin();
+ 298   1      
+ 299   1        /**********************************************************************
+ 300   1          PWM frequency = Fpwm/((PWMPH,PWMPL) + 1) <Fpwm = Fsys/PWM_CLOCK_DIV>
+C51 COMPILER V9.60.0.0   PWM                                                               11/25/2019 11:23:24 PAGE 6   
+
+ 301   1          = (16MHz/8)/(0x7CF + 1) = 1KHz (1ms)
+ 302   1        ***********************************************************************/
+ 303   1      #ifdef EN_PWM_INTERRUPT
+ 304   1        PWM5_P03_OUTPUT_ENABLE;
+ 305   1        PWM_INT_PWM5;
+ 306   1        PWM_RISING_INT;  // PWM_FALLING_INT; //Setting Interrupt happen when PWM0
+ 307   1                         // falling signal
+ 308   1      
+ 309   1        PWM_CLOCK_DIV_4;
+ 310   1      
+ 311   1        PWMPH = 0x00;  // 38Khz
+ 312   1        PWMPL = 0x68;  // 38Khz 68 | 67 38k5
+ 313   1      
+ 314   1        set_SFRPAGE;  // PWM4 and PWM5 duty seting is in SFP page 1
+ 315   1        PWM5H = 0x0;
+ 316   1        PWM5L = 0x40;
+ 317   1        clr_SFRPAGE;
+ 318   1      
+ 319   1        set_EPWM;  // Enable PWM interrupt
+ 320   1        set_EA;
+ 321   1        set_LOAD;
+ 322   1        set_PWMRUN;
+ 323   1      #endif
+ 324   1      
+ 325   1        while (1) {
+ 326   2        }
+ 327   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    652    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     23    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
