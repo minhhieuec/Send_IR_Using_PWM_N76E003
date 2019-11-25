@@ -39,3 +39,5 @@ NPN: C1815.
   set_LOAD;
   set_PWMRUN;
 ```
+### OUTPUT
+![IR OUT](https://github.com/minhhieuec/Send_IR_Using_PWM_N76E003/blob/master/N76E003_BSP_Keil_C51_V1.0.6/IR_OUT.jpg)
