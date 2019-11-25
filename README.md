@@ -1,5 +1,8 @@
 # Send_IR_Using_PWM_N76E003
-Using PWM to generate 38KHz Pulse to send IR data.
+Using PWM to generate 38KHz Pulse to send IR data in array `ir_data`.
+```c
+uint8_t ir_data[8] = {0xAA, 0x0A, 0x48, 0xD0, 0x30, 0x22, 0x59, 0x71};
+```
 
 This sample code in N76E003_BSP_Keil_C51_V1.0.6/Sample_Code/SEND_IR_USING_PWM
 
