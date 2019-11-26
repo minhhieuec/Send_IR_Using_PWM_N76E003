@@ -8,14 +8,13 @@ This sample code in N76E003_BSP_Keil_C51_V1.0.6/Sample_Code/SEND_IR_USING_PWM
 
 ## IR Protocol
 ![IR Protocol](https://github.com/minhhieuec/Send_IR_Using_PWM_N76E003/blob/master/N76E003_BSP_Keil_C51_V1.0.6/IR_PROTOCOL.PNG)
+
 Reference: https://www.sbprojects.net/knowledge/ir/nec.php
 
 ## Schematic
 ![shematic of send ir with pwm](https://github.com/minhhieuec/Send_IR_Using_PWM_N76E003/blob/master/N76E003_BSP_Keil_C51_V1.0.6/shematic.PNG)
 
 Using P0.3 of N76E003 as PWM5 mode.
-
-NPN: C1815.
 
 ### Config PWM5
 ```c
